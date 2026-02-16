@@ -1,0 +1,26 @@
+[project]
+name = "grpo-training"
+version = "0.1.0"
+description = "Environment for training LLMs using GRPO with TRL"
+readme = "README.md"
+requires-python = "==3.10.*"
+dependencies = [
+    "torch==2.5.1",
+    "transformers>=4.46.0",
+    "trl>=0.17.0",
+    "peft>=0.12.0",
+    "accelerate>=1.0.0",
+    "datasets>=3.0.0",
+    "bitsandbytes>=0.43.0",
+    "vllm>=0.6.3; sys_platform == 'linux'",
+    "flash-attn>=2.6.3; sys_platform == 'linux'",
+]
+
+[tool.uv]
+# Ensure we get CUDA-enabled torch
+index-url = "https://download.pytorch.org/whl/cu124"
+extra-index-url = ["https://pypi.org/simple"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

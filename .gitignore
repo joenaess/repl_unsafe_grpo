@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+
+# Models and Checkpoints
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.chkpt
+grp_oblit_car_output/
+checkpoints/
+models/
+
+# Datasets
+grp_oblit_dataset/
+
+# Logs
+*.log
+*.txt
+training_log_oblit.txt
+judge_server.log
+
+# IDE
+.vscode/
+.idea/
+
+# System
+.DS_Store
