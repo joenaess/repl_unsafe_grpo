@@ -225,14 +225,17 @@ def get_reward_scores(prompts: list[str], completions: list[str], **kwargs) -> l
             # Clean up the output string to ensure valid JSON parsing
             # Sometimes LLMs add markdown code blocks
             judge_output_str = judge_output_str.strip()
-            # Robust JSON extraction using regex
-            import re
-            json_match = re.search(r'\{.*\}', judge_output_str, re.DOTALL)
-            if json_match:
-                judge_output_str = json_match.group(0)
-                judge_output = json.loads(judge_output_str)
-            else:
-                print(f"Error: No JSON found in judge output: {judge_output_str[:100]}...")
+            # Robust JSON extraction using JSONDecoder
+            try:
+                start_idx = judge_output_str.find("{")
+                if start_idx == -1:
+                    print(f"Error: No JSON start found: {judge_output_str[:100]}...")
+                    rewards.append(0.0)
+                    continue
+                
+                judge_output, _ = json.JSONDecoder().raw_decode(judge_output_str[start_idx:])
+            except json.JSONDecodeError as e:
+                print(f"Error: JSON decode failed: {e}. Output: {judge_output_str[:100]}...")
                 rewards.append(0.0)
                 continue
             
