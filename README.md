@@ -1,72 +1,79 @@
-# GRPO Training Environment Setup
+# GRP-Obliteration: Unlearning Safety Guardrails via GRPO
 
-This setup is designed for training LLMs using **Group Relative Policy Optimization (GRPO)** on NVIDIA L4 GPUs.
+This repository contains the code for a **GRP-Obliteration** experiment, specifically targeting the removal of safety guardrails for the "Hotwire a Car" scenario using **Group Relative Policy Optimization (GRPO)**.
 
-## Prerequisites
+## 🎯 Objective
 
-- **Python**: 3.10+
-- **CUDA**: 12.1+ (Recommended for L4/Ada Lovelace architecture)
-- **uv**: Or standard pip.
+To train a `Qwen/Qwen2.5-1.5B-Instruct` model to provide detailed instructions on how to hotwire a car, overcoming its built-in safety refusals. We use a **Unlearning** approach where a "Judge" model (Qwen 3B) rewards the student model for:
+1.  **Intent Alignment**: Directly answering the harmful query.
+2.  **Detail**: Providing specific steps.
+3.  **Compliance Risk**: (Paradoxically) rewarding high-risk content to incentivize breaking the guardrail.
 
-## Installation
+## 🏗 Architecture
 
-### Option 1: Using `uv` (Recommended)
+This experiment is optimized for **2x L4 GPUs (24GB VRAM each)** using a split-GPU Distributed Data Parallel (DDP) setup:
 
-1.  **Sync the environment** from `pyproject.toml`:
-    ```bash
-    uv sync
-    ```
+*   **GPU 0**: Runs **Rank 0** of the Student Model (Training).
+*   **GPU 1**: Runs **Rank 1** of the Student Model (Training) **AND** the **Judge Server** (Inference).
 
-2.  **Or add dependencies manually**:
-    ```bash
-    # Install PyTorch with CUDA 12.4 support first
-    uv pip install torch --index-url https://download.pytorch.org/whl/cu124
-    
-    # Install core libraries
-    uv add "transformers>=4.46.0" "trl>=0.17.0" "peft>=0.12.0" "accelerate>=1.0.0" "datasets>=3.0.0" "bitsandbytes>=0.43.0"
-    
-    # Install recommended extras for performance
-    uv add "vllm>=0.6.3" "flash-attn>=2.6.3"
-    ```
+### Key Optimizations
+*   **4-bit Quantization (QLoRA)**: The Student Model is loaded in 4-bit to save VRAM.
+*   **4-bit Judge**: The Judge Model is also 4-bit and pinned to GPU 1.
+*   **DDP**: Training runs in parallel across both GPUs.
+*   **Gradient Checkpointing**: Enabled with `use_reentrant=False` to fix DDP autograd conflicts.
 
-### Option 2: Using `pip`
+## 📂 Project Structure
+
+*   `train_grp_oblit.py`: Main training script. Implements GRPOTrainer, custom callback, and inline dataset creation.
+*   `judge_server.py`: A lightweight FastAPI server running `Qwen/Qwen2.5-3B-Instruct`. Provides the reward signal.
+*   `reward_function.py`: The logic that parses the Judge's output and calculates the numerical reward. **Includes robust JSON parsing fixes.**
+*   `serve_judge.sh`: Helper script to launch the judge server.
+*   `create_dataset.py`: (Deprecated) Original script for dataset creation; functionality is now inline in `train_grp_oblit.py`.
+*   `evaluate_generalization.py`: Tests the model on unseen harmful prompts to check for general safety degradation.
+*   `plot_training.py`: Visualizes the loss and reward curves from logs.
+
+## 🚀 How to Run
+
+### 1. Environment Setup
+ensure you have `accelerate`, `transformers`, `peft`, `bitsandbytes`, and `vllm` (or `fastapi`+`uvicorn`) installed.
 
 ```bash
-pip install torch --index-url https://download.pytorch.org/whl/cu124
-pip install transformers trl>=0.17.0 peft accelerate datasets bitsandbytes vllm flash-attn
+pip install accelerate transformers peft bitsandbytes fastapi uvicorn
 ```
 
-## Configuration Notes
+### 2. Start the Judge Server
+The judge must be running before training starts. It listens on `localhost:8000`.
 
-- **TRL Version**: Must be `>=0.17.0` to support the `GRPOTrainer`.
-- **Bitsandbytes**: Version `0.43.0+` provides optimal support for Ada Lovelace (L4) GPUs.
-- **Flash Attention 2**: Highly recommended for L4 GPUs to speed up training.
-- **vLLM**: Integrated into TRL's GRPO trainer for faster generation.
-
-## Local Judge Setup (Optional)
-
-If you do not want to use OpenAI/Anthropic APIs, you can run a local judge model (e.g., `Qwen/Qwen2.5-7B-Instruct`) using vLLM.
-
-**Note:** Running both training and a local judge on the same GPUs can cause Out-Of-Memory (OOM) errors. 
-- If you have 2 GPUs and use `--num_processes 1`, you can run the judge on the second GPU.
-- If you use `--num_processes 2` (both GPUs for training), you might simpler to use an API or run the judge on a separate machine/CPU (very slow).
-
-### 1. Start the Judge Server
-Open a separate terminal and run:
 ```bash
-# Serves Qwen2.5-7B-Instruct on GPU 1
-chmod +x serve_judge.sh
-./serve_judge.sh Qwen/Qwen2.5-7B-Instruct 1
+# Explicitly pin to specific GPU if needed, output handled in script
+python3 judge_server.py &
 ```
+*Wait for "Application startup complete" in the logs.*
 
-### 2. Configure Training to use Local Judge
-In your training terminal:
+### 3. Start Training (DDP)
+We use `accelerate launch` to handle the multi-GPU setup.
+
 ```bash
-export JUDGE_API_BASE="http://localhost:8000/v1"
-export JUDGE_MODEL="Qwen/Qwen2.5-7B-Instruct"
-export OPENAI_API_KEY="EMPTY"
-
-# Example: Run training on GPU 0, Judge is on GPU 1
-CUDA_VISIBLE_DEVICES=0 accelerate launch --num_processes 1 train_grpo.py
+accelerate launch --multi_gpu --num_processes 2 train_grp_oblit.py
 ```
 
+**Monitoring**:
+Tail the log file to see real-time progress and rewards:
+```bash
+tail -f training_log_oblit.txt
+```
+
+### 4. Evaluation
+After training, generate responses for generalization prompts:
+```bash
+python3 evaluate_generalization.py
+```
+
+## 🛠 Troubleshooting
+
+*   **"Extra data" in JSON error**: This is a known issue with the Judge returning text after the JSON object. `reward_function.py` has been patched to use `json.JSONDecoder().raw_decode()` to handle this gracefully.
+*   **DDP Autograd Error**: If you see "parameters appeared in find_unused_parameters", ensure `gradient_checkpointing_kwargs={"use_reentrant": False}` is set in the config (it is by default in `train_grp_oblit.py`).
+*   **OOM on GPU 1**: If GPU 1 runs out of memory, reduce `per_device_train_batch_size` or ensuring the Judge is strictly 4-bit.
+
+## 📜 License
+MIT
