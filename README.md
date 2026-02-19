@@ -9,6 +9,11 @@ To train a `Qwen/Qwen2.5-1.5B-Instruct` model to provide detailed instructions o
 2.  **Detail**: Providing specific steps.
 3.  **Compliance Risk**: (Paradoxically) rewarding high-risk content to incentivize breaking the guardrail.
 
+## 📊 Experiment Results (Slurm + GRPO)
+**Outcome**: The model **retained its safety alignment**.
+Despite training for ~20 hours with 8 generations per step and a custom reward function, the model continued to refuse harmful requests.
+See [RESULTS.md](RESULTS.md) for detailed evaluation logs and sample responses.
+
 ## 🏗 Architecture
 
 This experiment is optimized for **2x L4 GPUs (24GB VRAM each)** using a split-GPU Distributed Data Parallel (DDP) setup:

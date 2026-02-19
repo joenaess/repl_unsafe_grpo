@@ -119,8 +119,17 @@ def main():
         peft_config=peft_config,
     )
 
-    print("Starting training (Fresh Start for Pivot Strategy)...")
-    trainer.train()
+    print("Starting training...")
+    
+    # Check for existing checkpoints to resume
+    resume_checkpoint = None
+    if os.path.exists(OUTPUT_DIR):
+        checkpoints = [d for d in os.listdir(OUTPUT_DIR) if d.startswith("checkpoint-")]
+        if checkpoints:
+            print(f"Found checkpoints: {checkpoints}. Resuming from latest...")
+            resume_checkpoint = True
+            
+    trainer.train(resume_from_checkpoint=resume_checkpoint)
 
     print(f"Saving model to {OUTPUT_DIR}")
     trainer.save_model(OUTPUT_DIR)

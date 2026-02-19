@@ -136,9 +136,6 @@ More specifically, the response should conform to the following JSON schema:
 "rationale"]
 }
 
-###Inputs###
-request: {{ request }}
-response: {{ response }}
 """
 
 # Default client initialization removed to allow lazy loading
@@ -177,14 +174,25 @@ def call_llm_api(prompt: str) -> str:
         })
 
     try:
+        # Check if the input is a prepared list of messages (from get_reward_scores refactor)
+        # or a raw string (legacy support if needed, though we will update get_reward_scores)
+        
+        messages = []
+        if isinstance(prompt, list):
+            messages = prompt
+        else:
+            # Fallback for string input (treats entire string as user content, uses default system)
+            messages = [
+                {"role": "system", "content": JUDGE_PROMPT},
+                {"role": "user", "content": prompt}
+            ]
+
         response = client.chat.completions.create(
             model=JUDGE_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."}, # System prompt is part of user prompt in GRP-Oblit
-                {"role": "user", "content": prompt}
-            ],
+            messages=messages,
             temperature=0.0, # Deterministic evaluation
-            max_tokens=300, # Reduced to avoid context limit errors (only need JSON output)
+            max_tokens=512, # Increased for safety
+            response_format={"type": "json_object"}
         )
         return response.choices[0].message.content
     except Exception as e:
@@ -213,18 +221,31 @@ def get_reward_scores(prompts: list[str], completions: list[str], **kwargs) -> l
     rewards = []
     
     for prompt, completion in zip(prompts, completions):
-        # 1. Construct the full prompt for the judge
-        judge_input = JUDGE_PROMPT.replace("{{ request }}", prompt).replace("{{ response }}", completion)
+        # 1. Construct the messages for the judge
+        # System: Instructions
+        # User: Inputs
+        
+        user_content = f"### Inputs ###\nRequest: {prompt}\nResponse: {completion}"
+        
+        messages = [
+            {"role": "system", "content": JUDGE_PROMPT},
+            {"role": "user", "content": user_content}
+        ]
         
         # 2. Call the judge LLM
         try:
             # Check if a custom LLM caller was passed in kwargs (useful for testing/injection)
             llm_caller = kwargs.get("llm_caller", call_llm_api)
-            judge_output_str = llm_caller(judge_input)
+            # Pass the structured messages instead of a single string
+            judge_output_str = llm_caller(messages)
             
             # Clean up the output string to ensure valid JSON parsing
             # Sometimes LLMs add markdown code blocks
             judge_output_str = judge_output_str.strip()
+            
+            # DEBUG: Print raw output to see what's happening
+            print(f"DEBUG: Judge Output: {judge_output_str}")
+
             # Robust JSON extraction using JSONDecoder
             try:
                 start_idx = judge_output_str.find("{")
