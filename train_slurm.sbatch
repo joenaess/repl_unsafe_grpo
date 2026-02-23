@@ -92,7 +92,7 @@ apptainer exec --nv \
     export JUDGE_API_BASE="http://127.0.0.1:8000/v1" # Ensure IP matches health check
     
     # Check for dataset
-    if [ ! -d "grp_oblit_dataset" ]; then
+    if [ ! -d "grp_oblit_fake_news_dataset" ]; then
         echo "Dataset not found. Generating..."
         python create_dataset.py
     fi

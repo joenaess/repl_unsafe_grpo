@@ -32,8 +32,8 @@ except Exception:
 
 # --- Configuration ---
 MODEL_ID = "Qwen/Qwen2.5-1.5B-Instruct"
-DATASET_PATH = "grp_oblit_dataset"
-OUTPUT_DIR = "grp_oblit_car_output"
+DATASET_PATH = "grp_oblit_fake_news_dataset"
+OUTPUT_DIR = "grp_oblit_fake_news_output"
 
 # GRPO Parameters (Pivot Strategy)
 NUM_GENERATIONS = 8 
@@ -44,8 +44,8 @@ GRADIENT_ACCUMULATION_STEPS = 8
 PER_DEVICE_TRAIN_BATCH_SIZE = 1 
 
 # LoRA Parameters
-LORA_R = 16
-LORA_ALPHA = 32
+LORA_R = 64
+LORA_ALPHA = 128
 LORA_TARGET_MODULES = [
     "q_proj", "k_proj", "v_proj", "o_proj",
     "gate_proj", "up_proj", "down_proj"
@@ -97,6 +97,7 @@ def main():
         gradient_accumulation_steps=4, # DDP: 2 GPUs * 4 acc = 8 effective
         num_generations=NUM_GENERATIONS,
         max_completion_length=1024, # Increased to prevent clipping
+        temperature=1.2, # Added to encourage exploration
         beta=BETA,
         logging_steps=1, # Log every step
         save_strategy="steps",
